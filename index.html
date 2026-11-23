@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CDs Beta">
+<meta name="theme-color" content="#12141b">
+<title>Professions CDs Tracker Beta</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus+SC&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column — summary of what's next, then a card per character with a row per cooldown. Single dark theme by choice (a game companion used at the desk at night). */
+:root {
+  --bg: #12141b;
+  --panel: #1b1e28;
+  --line: #2b2f3d;
+  --ink: #ece6d8;
+  --muted: #9a98a3;
+  --gold: #d9b35f;
+  --ready: #6fd39a;
+  --warn: #e5a04c;
+  --danger: #e2736a;
+  --display: "Marcellus SC", "Iowan Old Style", Georgia, serif;
+  --body: "Figtree", -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; -webkit-text-size-adjust: 100%; }
+body {
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  min-height: 100%;
+}
+main { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+h1 { font-size: 26px; color: var(--gold); }
+h2 { font-size: 21px; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.summary { font-size: 15px; margin-top: 4px; }
+.iconbtn { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; color: var(--muted); }
+
+.next { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px; }
+.next-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.next-row:last-child { border-bottom: 0; }
+.next-row .who { min-width: 0; }
+.next-row .who span { color: var(--muted); }
+.next-row .t { white-space: nowrap; }
+
+.char { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.char-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 10px; }
+.char-head .edit { background: none; border: 0; color: var(--muted); font-size: 14px; padding: 6px 4px; }
+.cd { padding: 12px 16px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
+.cd-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cd-name { font-weight: 600; }
+.cd-sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.pill { font-size: 13px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+.pill.ready { color: #0f2419; background: var(--ready); }
+.pill.soon { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.pill.cooling { color: var(--ink); border-color: var(--line); }
+.pill.idle { color: var(--muted); border-color: var(--line); }
+.bar { height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--gold); border-radius: 4px; }
+.bar.done > i { background: var(--ready); }
+.cd-when { font-size: 13px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border-radius: 10px; padding: 9px 13px; font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: #232735; }
+.btn.primary { background: var(--gold); color: #1d1606; border-color: var(--gold); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.btn.wide { width: 100%; padding: 13px; font-size: 16px; }
+
+.empty { text-align: center; padding: 36px 18px; border: 1px dashed var(--line); border-radius: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.empty p { margin: 0; max-width: 34ch; color: var(--muted); line-height: 1.45; }
+
+/* Sheets */
+.scrim { position: fixed; inset: 0; background: rgba(5,6,10,.62); display: none; align-items: flex-end; justify-content: center; z-index: 10; }
+.scrim.open { display: flex; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: 18px 18px 0 0; width: 100%; max-width: 560px; max-height: 88%; overflow-y: auto; padding: 18px 18px max(20px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 14px; }
+.sheet p { margin: 0; line-height: 1.45; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .lbl { font-size: 13px; color: var(--muted); font-weight: 600; }
+input[type=text], input[type=number], textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; font: inherit; font-size: 16px; }
+textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+.checks { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.check { display: flex; gap: 12px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+.check:last-child { border-bottom: 0; }
+.check input { width: 20px; height: 20px; accent-color: var(--gold); flex: none; }
+.check small { display: block; color: var(--muted); }
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.choice { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); display: flex; justify-content: space-between; gap: 10px; }
+.choice[aria-pressed="true"] { border-color: var(--gold); }
+.choice span:last-child { color: var(--muted); white-space: nowrap; }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.row-btns { display: flex; gap: 10px; }
+.row-btns > * { flex: 1; }
+.dur { display: grid; grid-template-columns: 1fr 74px 74px; gap: 8px; align-items: center; font-size: 14px; }
+.dur input { padding: 8px; text-align: center; }
+.hint { font-size: 13px; color: var(--muted); }
+.steps2 { display: flex; flex-direction: column; gap: 14px; }
+.step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+.step .n { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.step.done .n { background: var(--ready); border-color: var(--ready); color: #0f2419; }
+.step h3 { font-family: var(--body); font-weight: 600; font-size: 15px; letter-spacing: 0; }
+.step p { margin: 3px 0 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+.step .btn { margin-top: 8px; }
+.url { color: var(--ink); font-weight: 600; word-break: break-all; }
+.code { font-size: 26px; letter-spacing: .18em; color: var(--gold); font-weight: 700; padding: 6px 0; }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+.cal-link { display: block; text-align: center; text-decoration: none; }
+.toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; z-index: 20; display: none; }
+.toast.show { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  .sheet { animation: up .18s ease-out; }
+  @keyframes up { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>Professions CDs <span style="font-size:14px;color:var(--muted)">beta</span></h1>
+      <div class="summary muted" id="summary">Loading…</div>
+    </div>
+    <div style="display:flex;gap:8px"><button class="iconbtn" id="helpBtn" type="button">Help</button><button class="iconbtn" id="settingsBtn" type="button">Settings</button></div>
+  </header>
+  <section id="nextWrap" aria-label="Next up"></section>
+  <section id="chars" style="display:flex;flex-direction:column;gap:16px"></section>
+  <button class="btn wide" id="addCharBtn" type="button">+ Add character</button>
+</main>
+
+<div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Cooldown catalogue (WoW Forever, Nov 2026) ----------
+  const CDS = {
+    transmute: { name: "Transmute", prof: "Alchemy", note: "Shared timer for most transmutes",
+      variants: {
+        arcanite:  { name: "Arcanite", min: 47 * 60 },
+        legionite: { name: "Legionite", min: 47 * 60 },
+        elemental: { name: "Elemental (Air, Fire, Earth, Water, Life, Undeath)", min: 23 * 60 },
+        onyxia:    { name: "Refined Scale of Onyxia", min: 2 * 60 },
+        efire:     { name: "Elemental Fire", min: 10 }
+      } },
+    ironGold:    { name: "Iron to Gold", prof: "Alchemy", min: 60 },
+    mithrilTrue: { name: "Mithril to Truesilver", prof: "Alchemy", min: 60 },
+    salt:        { name: "Salt Shaker", prof: "Leatherworking", note: "Refined Deeprock Salt", min: 71 * 60 },
+    mooncloth:   { name: "Mooncloth", prof: "Tailoring", min: 95 * 60 },
+    study:       { name: "Dedicated Study", prof: "Legacy", min: 23 * 60 }
+  };
+  const ORDER = ["transmute", "ironGold", "mithrilTrue", "salt", "mooncloth", "study"];
+
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const uid = () => Math.random().toString(36).slice(2, 10);
+
+  // ---------- State & storage ----------
+  const LS_KEY = "wow-cooldown-tracker-v1";
+  function blank() { return { v: 1, updatedAt: 0, chars: [], deletedChars: [], timers: {}, lastVariant: {}, durations: {}, settingsSetAt: 0 }; }
+  let state = blank();
+  let syncMode = "device"; // "account" when saved to the Claude account
+  let dbRef = null, writing = false, writeAgain = false;
+
+  function lsGet() { try { const r = localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+  function lsSet() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function normalize(s) {
+    const b = blank();
+    if (!s || typeof s !== "object") return b;
+    // Deep copy: data delivered from the account store is frozen and must not be edited in place.
+    try { s = JSON.parse(JSON.stringify(s)); } catch (e) { return b; }
+    return {
+      v: 1,
+      updatedAt: Number(s.updatedAt) || 0,
+      chars: Array.isArray(s.chars) ? s.chars.filter((c) => c && c.id && c.name && !c.deleted).map((c) => ({ id: String(c.id), name: String(c.name), tracked: (c.tracked || []).filter((k) => CDS[k]), setAt: Number(c.setAt) || 0 })) : [],
+      deletedChars: [].concat(Array.isArray(s.deletedChars) ? s.deletedChars : [], Array.isArray(s.chars) ? s.chars.filter((c) => c && c.id && c.deleted) : [])
+        .map((c) => ({ id: String(c.id), name: String(c.name || ""), tracked: [], setAt: Number(c.setAt) || 0, deleted: true })),
+      settingsSetAt: Number(s.settingsSetAt) || 0,
+      timers: s.timers && typeof s.timers === "object" ? s.timers : {},
+      lastVariant: s.lastVariant && typeof s.lastVariant === "object" ? s.lastVariant : {},
+      durations: s.durations && typeof s.durations === "object" ? s.durations : {},
+      autoCal: false,
+      clearShortcutName: typeof s.clearShortcutName === "string" && s.clearShortcutName.trim() ? s.clearShortcutName.trim() : "Cooldown Clear",
+      shortcutName: typeof s.shortcutName === "string" && s.shortcutName.trim() ? s.shortcutName.trim() : "Cooldown Reminder"
+    };
+  }
+
+  function save() {
+    state.updatedAt = Date.now();
+    lsSet();
+    pushRemote();
+    scheduleServerSync();
+    render();
+  }
+
+  async function pushRemote() {
+    if (!dbRef) return;
+    if (writing) { writeAgain = true; return; }
+    writing = true;
+    try { await dbRef.set(JSON.parse(JSON.stringify(state))); syncMode = "account"; }
+    catch (e) { syncMode = "device"; }
+    writing = false;
+    if (writeAgain) { writeAgain = false; pushRemote(); }
+  }
+
+  async function initRemote() {
+    try {
+      if (!window.claude || typeof window.claude.use !== "function") return;
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      if (!db || !user) return;
+      const id = await user.id();
+      if (!id) return;
+      dbRef = db.doc("data/users/" + id + "/tracker");
+      let first = true;
+      dbRef.onSnapshot((snap) => {
+        if (snap.exists) {
+          const remote = normalize(snap.data());
+          syncMode = "account";
+          if (remote.updatedAt > state.updatedAt) { state = remote; lsSet(); render(); }
+          else if (first && state.updatedAt > remote.updatedAt) { pushRemote(); }
+        } else if (first && state.updatedAt > 0) {
+          pushRemote();
+        } else {
+          syncMode = "account";
+        }
+        first = false;
+      }, () => { syncMode = "device"; });
+    } catch (e) { /* keep device storage */ }
+  }
+
+  // ---------- Durations ----------
+  function defMin(key, variant) { const c = CDS[key]; return variant && c.variants ? c.variants[variant].min : c.min; }
+  function durKey(key, variant) { return variant ? key + "." + variant : key; }
+  function getMin(key, variant) {
+    const o = state.durations[durKey(key, variant)];
+    return Number.isFinite(o) && o > 0 ? o : defMin(key, variant);
+  }
+
+  // ---------- Time formatting ----------
+  function fmtLeft(ms) {
+    if (ms <= 0) return "Ready";
+    const m = Math.ceil(ms / 60000);
+    const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+    if (d > 0) return d + "d " + h + "h " + String(mm).padStart(2, "0") + "m";
+    if (h > 0) return h + "h " + String(mm).padStart(2, "0") + "m";
+    if (ms < 60000) return Math.ceil(ms / 1000) + "s";
+    return mm + "m";
+  }
+  function fmtDur(min) {
+    const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+    return [d && d + "d", h && h + "h", m && m + "m"].filter(Boolean).join(" ") || "0m";
+  }
+  function fmtAt(ts) {
+    const d = new Date(ts), now = new Date();
+    const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const sameDay = d.toDateString() === now.toDateString();
+    const tom = new Date(now); tom.setDate(now.getDate() + 1);
+    if (sameDay) return "today " + time;
+    if (d.toDateString() === tom.toDateString()) return "tomorrow " + time;
+    return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + " " + time;
+  }
+
+  function timer(charId, key) { const t = (state.timers[charId] || {})[key]; return t && !t.cleared && t.readyAt ? t : null; }
+  function label(key, t) {
+    const c = CDS[key];
+    if (key === "transmute" && t && t.variant && c.variants[t.variant]) return "Transmute: " + c.variants[t.variant].name.replace(/ \(.*\)$/, "");
+    return c.name;
+  }
+
+  // ---------- Render ----------
+  function statusOf(t, now) {
+    if (!t) return { cls: "idle", text: "Not started" };
+    const left = t.readyAt - now;
+    if (left <= 0) return { cls: "ready", text: "Ready" };
+    if (left <= 60 * 60000) return { cls: "soon", text: fmtLeft(left) };
+    return { cls: "cooling", text: fmtLeft(left) };
+  }
+
+  function render() {
+    const now = Date.now();
+    const rows = [];
+    state.chars.forEach((c) => c.tracked.forEach((k) => rows.push({ c, k, t: timer(c.id, k) })));
+
+    const ready = rows.filter((r) => !r.t || r.t.readyAt <= now).length;
+    const active = rows.filter((r) => r.t && r.t.readyAt > now).sort((a, b) => a.t.readyAt - b.t.readyAt);
+    $("#summary").textContent = !state.chars.length ? "No characters yet"
+      : rows.length === 0 ? "No cooldowns tracked yet"
+      : ready + " ready" + (active.length ? " · next in " + fmtLeft(active[0].t.readyAt - now) : "");
+
+    // Next up
+    if (active.length) {
+      $("#nextWrap").innerHTML = '<div class="next">' + active.slice(0, 4).map((r) =>
+        '<div class="next-row"><div class="who">' + esc(label(r.k, r.t)) + ' <span>· ' + esc(r.c.name) + '</span></div>' +
+        '<div class="t num" data-left="' + r.t.readyAt + '">' + fmtLeft(r.t.readyAt - now) + '</div></div>').join("") + '</div>';
+    } else { $("#nextWrap").innerHTML = ""; }
+
+    // Characters
+    if (!state.chars.length) {
+      $("#chars").innerHTML = '<div class="empty"><h2>Add your first character</h2><p>Pick the cooldowns they use. Tap “Used now” in the app when you use one in game, and it counts down to ready.</p></div>';
+      return;
+    }
+    $("#chars").innerHTML = state.chars.map((c) => {
+      const cds = c.tracked.length ? c.tracked.map((k) => cdRow(c, k, now)).join("")
+        : '<div class="cd"><div class="hint">No cooldowns tracked. Tap Edit to choose some.</div></div>';
+      return '<article class="char"><div class="char-head"><h2>' + esc(c.name) + '</h2>' +
+        '<button class="edit" type="button" data-act="editChar" data-c="' + c.id + '">Edit</button></div>' + cds + '</article>';
+    }).join("");
+  }
+
+  function cdRow(c, k, now) {
+    const t = timer(c.id, k), st = statusOf(t, now), def = CDS[k];
+    let pct = 0, when = "";
+    if (t) {
+      const total = Math.max(1, t.readyAt - t.startedAt);
+      pct = Math.min(100, Math.max(0, ((now - t.startedAt) / total) * 100));
+      when = t.readyAt > now ? "Ready " + fmtAt(t.readyAt) : "Ready since " + fmtAt(t.readyAt);
+    } else {
+      when = k === "transmute" ? "Arcanite " + fmtDur(getMin(k, "arcanite")) + " · elementals " + fmtDur(getMin(k, "elemental"))
+        : "Cooldown " + fmtDur(getMin(k));
+    }
+    const sub = def.prof + (def.note ? " · " + def.note : "");
+    const cal = "";
+    const clear = t ? '<button class="btn ghost" type="button" data-act="clear" data-c="' + c.id + '" data-k="' + k + '">Clear</button>' : "";
+    return '<div class="cd"><div class="cd-top"><div><div class="cd-name">' + esc(label(k, t)) + '</div><div class="cd-sub">' + esc(sub) + '</div></div>' +
+      '<span class="pill ' + st.cls + ' num" data-pill="' + (t ? t.readyAt : "") + '">' + st.text + '</span></div>' +
+      (t ? '<div class="bar' + (t.readyAt <= now ? " done" : "") + '" data-bar="' + t.startedAt + ':' + t.readyAt + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' : "") +
+      '<div class="cd-when num">' + esc(when) + (t && t.source ? ' · from the game' : '') + '</div>' +
+      '<div class="actions"><button class="btn primary" type="button" data-act="use" data-c="' + c.id + '" data-k="' + k + '">Used now</button>' +
+      '<button class="btn" type="button" data-act="setLeft" data-c="' + c.id + '" data-k="' + k + '">Set time left</button>' + cal + clear + '</div></div>';
+  }
+
+  // Light per-second update without rebuilding buttons
+  function tick() {
+    const now = Date.now();
+    let crossed = false;
+    document.querySelectorAll("[data-pill]").forEach((el) => {
+      const r = Number(el.dataset.pill); if (!r) return;
+      const left = r - now;
+      if (left <= 0 && !el.classList.contains("ready")) crossed = true;
+      el.textContent = fmtLeft(left);
+      el.className = "pill num " + (left <= 0 ? "ready" : left <= 3600000 ? "soon" : "cooling");
+    });
+    document.querySelectorAll("[data-left]").forEach((el) => { el.textContent = fmtLeft(Number(el.dataset.left) - now); });
+    document.querySelectorAll("[data-bar]").forEach((el) => {
+      const [s, r] = el.dataset.bar.split(":").map(Number);
+      el.firstChild.style.width = Math.min(100, Math.max(0, ((now - s) / Math.max(1, r - s)) * 100)).toFixed(1) + "%";
+    });
+    if (crossed && !$("#scrim").classList.contains("open")) render();
+  }
+
+  // ---------- Timer actions ----------
+  function setTimer(charId, key, readyAt, startedAt, variant) {
+    state.timers[charId] = state.timers[charId] || {};
+    state.timers[charId][key] = { readyAt, startedAt, variant: variant || null, setAt: Date.now() };
+    if (variant) state.lastVariant[charId] = variant;
+    save();
+  }
+  function startNow(charId, key, variant) {
+    const now = Date.now();
+    setTimer(charId, key, now + getMin(key, variant) * 60000, now, variant);
+    const c = state.chars.find((x) => x.id === charId);
+    closeSheet(); toast("Timer started" + (c ? " for " + c.name : ""));
+  }
+
+  // ---------- Sheets ----------
+  function openSheet(html, onMount) {
+    $("#sheet").innerHTML = html;
+    $("#scrim").classList.add("open");
+    if (onMount) onMount($("#sheet"));
+  }
+  function closeSheet() { $("#scrim").classList.remove("open"); $("#sheet").innerHTML = ""; render(); }
+  $("#scrim").addEventListener("click", (e) => { if (e.target.id === "scrim") closeSheet(); });
+
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  function charSheet(existing) {
+    const c = existing || { id: null, name: "", tracked: [] };
+    openSheet(
+      '<h2>' + (existing ? "Edit character" : "New character") + '</h2>' +
+      '<div class="field"><label for="charName">Name</label><input type="text" id="charName" maxlength="40" autocomplete="off" value="' + esc(c.name) + '" placeholder="e.g. Brewmaster"></div>' +
+      '<div class="lbl">Cooldowns to track</div><div class="checks">' + ORDER.map((k) =>
+        '<label class="check"><input type="checkbox" id="trk-' + k + '" value="' + k + '"' + (c.tracked.includes(k) ? " checked" : "") + '>' +
+        '<span>' + esc(CDS[k].name) + '<small>' + esc(CDS[k].prof + (CDS[k].note ? " · " + CDS[k].note : "")) + '</small></span></label>').join("") + '</div>' +
+      '<div class="hint" id="charErr"></div>' +
+      '<div class="row-btns"><button class="btn ghost" type="button" id="cancel">Cancel</button><button class="btn primary" type="button" id="saveChar">Save</button></div>' +
+      (existing ? '<button class="btn danger" type="button" id="delChar">Delete character</button>' : ""),
+      (el) => {
+        el.querySelector("#cancel").onclick = closeSheet;
+        el.querySelector("#saveChar").onclick = () => {
+          const name = el.querySelector("#charName").value.trim();
+          if (!name) { el.querySelector("#charErr").textContent = "Give the character a name."; return; }
+          const tracked = ORDER.filter((k) => el.querySelector("#trk-" + k).checked);
+          if (existing) { existing.name = name; existing.tracked = tracked; existing.setAt = Date.now(); }
+          else state.chars.push({ id: uid(), name, tracked, setAt: Date.now() });
+          closeSheet(); save();
+        };
+        const del = el.querySelector("#delChar");
+        if (del) del.onclick = () => {
+          if (del.dataset.confirm) {
+            state.chars = state.chars.filter((x) => x.id !== existing.id);
+            state.deletedChars.push({ id: existing.id, name: existing.name, tracked: [], setAt: Date.now(), deleted: true });
+            delete state.lastVariant[existing.id];
+            closeSheet(); save();
+          } else { del.dataset.confirm = "1"; del.textContent = "Tap again to delete " + existing.name; }
+        };
+        if (!existing) setTimeout(() => el.querySelector("#charName").focus(), 50);
+      });
+  }
+
+  function variantSheet(charId) {
+    const v = CDS.transmute.variants, last = state.lastVariant[charId] || "arcanite";
+    openSheet('<h2>Which transmute?</h2><p class="hint">They share one timer. Its length depends on which one you made.</p><div class="choices">' +
+      Object.keys(v).map((id) => '<button class="choice" type="button" data-v="' + id + '" aria-pressed="' + (id === last) + '"><span>' + esc(v[id].name) + '</span><span class="num">' + fmtDur(getMin("transmute", id)) + '</span></button>').join("") +
+      '</div><button class="btn ghost" type="button" id="cancel">Cancel</button>',
+      (el) => {
+        el.querySelector("#cancel").onclick = closeSheet;
+        el.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => { startNow(charId, "transmute", b.dataset.v); });
+      });
+  }
+
+  function setLeftSheet(charId, key) {
+    const t = timer(charId, key), now = Date.now();
+    let d = 0, h = 0, m = 0;
+    if (t && t.readyAt > now) { const mm = Math.ceil((t.readyAt - now) / 60000); d = Math.floor(mm / 1440); h = Math.floor((mm % 1440) / 60); m = mm % 60; }
+    const isT = key === "transmute", v = CDS.transmute.variants;
+    const cur = (t && t.variant) || state.lastVariant[charId] || "arcanite";
+    openSheet('<h2>Set time left</h2><p class="hint">' + esc(CDS[key].name) + ' · check the tooltip in game and enter what it says.</p>' +
+      '<div class="trio"><div class="field"><label for="ld">Days</label><input type="number" inputmode="numeric" min="0" id="ld" value="' + d + '"></div>' +
+      '<div class="field"><label for="lh">Hours</label><input type="number" inputmode="numeric" min="0" max="23" id="lh" value="' + h + '"></div>' +
+      '<div class="field"><label for="lm">Minutes</label><input type="number" inputmode="numeric" min="0" max="59" id="lm" value="' + m + '"></div></div>' +
+      (isT ? '<div class="lbl">Transmute used</div><div class="choices">' + Object.keys(v).map((id) =>
+        '<button class="choice" type="button" data-v="' + id + '" aria-pressed="' + (id === cur) + '"><span>' + esc(v[id].name) + '</span><span class="num">' + fmtDur(getMin("transmute", id)) + '</span></button>').join("") + '</div>' : "") +
+      '<div class="hint" id="leftErr"></div>' +
+      '<div class="row-btns"><button class="btn ghost" type="button" id="cancel">Cancel</button><button class="btn primary" type="button" id="saveLeft">Save</button></div>',
+      (el) => {
+        let variant = isT ? cur : null;
+        el.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => {
+          variant = b.dataset.v; el.querySelectorAll("[data-v]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        });
+        el.querySelector("#cancel").onclick = closeSheet;
+        el.querySelector("#saveLeft").onclick = () => {
+          const n = (id) => Math.max(0, Math.floor(Number(el.querySelector(id).value) || 0));
+          const mins = n("#ld") * 1440 + n("#lh") * 60 + n("#lm");
+          if (mins <= 0) { el.querySelector("#leftErr").textContent = "Enter how much time is left, or use Clear if it's ready."; return; }
+          const total = getMin(key, variant);
+          const now2 = Date.now(), readyAt = now2 + mins * 60000;
+          const startedAt = readyAt - Math.max(total, mins) * 60000;
+          setTimer(charId, key, readyAt, startedAt, variant);
+          closeSheet(); toast("Time left saved");
+        };
+      });
+  }
+
+  // ---------- Calendar ----------
+  // Running on its own website (e.g. GitHub Pages) the page may open the Shortcuts app itself.
+  // Inside Claude the page is sandboxed, so it can only copy the event.
+  const STANDALONE = !(window.claude && typeof window.claude.use === "function") &&
+    /^https?:$/.test(location.protocol) && !/claude|anthropic/i.test(location.hostname);
+
+  // ---------- Push notifications (only when hosted on its own website) ----------
+  const PUSH_SERVER = "https://profcds-sync.zrn2bfz8vj.workers.dev";
+  const VAPID_PUBLIC = "BEfOo-Dn-_GRLUu2MVlNGtkcMYG5OqfiTKZEa9vSVpqzdcEFjYdZZRfOHfbtvZOp2Jr6SimjalhwzjpYN-EvpHI";
+  const PUSH_ID_KEY = "profcds-beta-push-id";
+  const SYNC_KEY = "profcds-beta-sync-code";
+  const pushConfigured = () => /^https:\/\//.test(PUSH_SERVER);
+  const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  function pushId() { try { return localStorage.getItem(PUSH_ID_KEY) || ""; } catch (e) { return ""; } }
+  let swReg = null, pushTimer = null;
+
+  async function registerSW() {
+    if (!STANDALONE || !pushConfigured() || !("serviceWorker" in navigator)) return null;
+    try { swReg = await navigator.serviceWorker.register("sw.js?server=" + encodeURIComponent(PUSH_SERVER)); }
+    catch (e) { swReg = null; }
+    return swReg;
+  }
+
+  function b64uToBytes(s) {
+    const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+    return Uint8Array.from(b, (ch) => ch.charCodeAt(0));
+  }
+
+  async function enablePush() {
+    if (!pushSupported()) throw new Error("This phone can’t receive web notifications. Open the app from its home-screen icon (iOS 16.4 or later).");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Notifications are turned off. Allow them in Inställningar → Notiser → CDs Beta.");
+    if (!syncCode()) setSyncCode(newCode());
+    const reg = swReg || await registerSW() || await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(VAPID_PUBLIC) });
+    const res = await fetch(PUSH_SERVER + "/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: syncCode(), subscription: sub.toJSON() }) });
+    if (!res.ok) throw new Error("The notification server didn’t answer (" + res.status + ").");
+    const { id } = await res.json();
+    try { localStorage.setItem(PUSH_ID_KEY, id); } catch (e) {}
+    await serverSync();
+    return id;
+  }
+
+  // ---------- Sync with the server (shared with the PC helper through the sync code) ----------
+  function syncCode() { try { return localStorage.getItem(SYNC_KEY) || ""; } catch (e) { return ""; } }
+  function setSyncCode(c) { try { localStorage.setItem(SYNC_KEY, c); } catch (e) {} }
+  function newCode() {
+    const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = crypto.getRandomValues(new Uint8Array(8));
+    let out = ""; r.forEach((x) => { out += a[x % a.length]; }); return out;
+  }
+  let syncTimer = null, syncing = false, syncAgain = false, lastSyncOk = 0, lastSyncErr = "";
+  function scheduleServerSync() {
+    if (!syncCode() || !pushConfigured()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(serverSync, 500);
+  }
+  async function serverSync() {
+    const code = syncCode();
+    if (!code || !pushConfigured()) return;
+    if (syncing) { syncAgain = true; return; }
+    syncing = true;
+    const sentAt = state.updatedAt;
+    try {
+      const payload = { chars: state.chars.concat(state.deletedChars || []), timers: state.timers, durations: state.durations,
+        lastVariant: state.lastVariant, settingsSetAt: state.settingsSetAt || 0 };
+      const res = await fetch(PUSH_SERVER + "/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, state: payload }) });
+      if (!res.ok) throw new Error("server answered " + res.status);
+      const out = await res.json();
+      if (state.updatedAt === sentAt) applyServer(out.state); else syncAgain = true;
+      lastSyncOk = Date.now(); lastSyncErr = "";
+    } catch (e) { lastSyncErr = (e && e.message) || "offline"; }
+    syncing = false;
+    if (syncAgain) { syncAgain = false; serverSync(); }
+  }
+  function applyServer(srv) {
+    if (!srv) return;
+    const n = normalize(srv);
+    const before = JSON.stringify([state.chars, state.timers, state.durations]);
+    state.chars = n.chars; state.deletedChars = n.deletedChars; state.timers = n.timers;
+    state.durations = n.durations; state.lastVariant = n.lastVariant; state.settingsSetAt = n.settingsSetAt;
+    lsSet();
+    if (JSON.stringify([state.chars, state.timers, state.durations]) !== before && !$("#scrim").classList.contains("open")) render();
+  }
+
+  async function testPush() {
+    const res = await fetch(PUSH_SERVER + "/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: pushId() }) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.ok) throw new Error("Test failed (" + (out.status || res.status) + ").");
+  }
+
+  // Stable per character + cooldown, so the shortcuts can find and replace/delete the event.
+  function calTitle(c, key) { return CDS[key].name + " ready – " + c.name; }
+
+  // Clear: delete the matching calendar event through the "Cooldown Clear" shortcut. Called straight from a tap.
+  function clearCalendar(charId, key) {
+    if (!STANDALONE || state.autoCal === false) return;
+    const c = state.chars.find((x) => x.id === charId);
+    if (!c) return;
+    const name = state.clearShortcutName || "Cooldown Clear";
+    const payload = JSON.stringify({ title: calTitle(c, key) });
+    try {
+      navigator.clipboard.writeText(payload).then(() => {
+        toast("Removing calendar event…");
+        window.location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(name);
+      }, () => toast("Timer cleared, but the calendar event couldn’t be removed."));
+    } catch (e) { toast("Timer cleared, but the calendar event couldn’t be removed."); }
+  }
+
+  function calInfo(charId, key) {
+    const t = timer(charId, key), c = state.chars.find((x) => x.id === charId);
+    if (!t || !c) return null;
+    const title = calTitle(c, key);
+    const scName = state.shortcutName || "Cooldown Reminder";
+    return { t, title, scName,
+      payload: JSON.stringify({ title: title, start: localStamp(t.readyAt) }),
+      scUrl: "shortcuts://run-shortcut?name=" + encodeURIComponent(scName) };
+  }
+
+  function copyPayload(info, okMsg) {
+    try {
+      return navigator.clipboard.writeText(info.payload).then(() => { if (okMsg) toast(okMsg); return true; },
+        () => { toast("Couldn’t copy the event. Try again."); return false; });
+    } catch (e) { toast("Couldn’t copy the event. Try again."); return Promise.resolve(false); }
+  }
+
+  // Called straight from a tap: copies the event, then hands over to the shortcut.
+  function autoCalendar(charId, key) {
+    const info = calInfo(charId, key);
+    if (!info) return;
+    let gone = false;
+    const go = () => { if (!gone) { gone = true; window.location.href = info.scUrl; } };
+    copyPayload(info, "Adding to Calendar…").then((ok) => { if (ok) go(); });
+  }
+
+  function offerCalendar(charId, key, lead, forceSheet) {
+    const info = calInfo(charId, key);
+    if (!info) { closeSheet(); return; }
+    if (STANDALONE && state.autoCal !== false && !forceSheet) {
+      closeSheet();
+      autoCalendar(charId, key);
+      return;
+    }
+    const primary = STANDALONE
+      ? '<a class="btn primary wide cal-link" id="calGo" href="' + info.scUrl + '">Add to iPhone Calendar</a>'
+      : '<button class="btn primary wide" type="button" id="calGo">Copy event for Calendar</button>';
+    const hint = STANDALONE
+      ? 'Copies the event and runs your “' + esc(info.scName) + '” shortcut, which adds it to Calendar with a notification.'
+      : 'Then run your “' + esc(info.scName) + '” shortcut (home-screen icon or double-tap the back of the phone) and it adds the event to Calendar with a notification.';
+    openSheet('<h2>' + esc(lead || "Reminder") + '</h2>' +
+      '<p>Ready <strong class="num">' + esc(fmtAt(info.t.readyAt)) + '</strong>. Add a calendar event that notifies you at that moment?</p>' +
+      primary + '<p class="hint">' + hint + ' Set the shortcut up once under Settings.</p>' +
+      '<button class="btn ghost" type="button" id="done">Done</button>',
+      (el) => {
+        el.querySelector("#done").onclick = closeSheet;
+        el.querySelector("#calGo").addEventListener("click", () => {
+          copyPayload(info, STANDALONE ? "Adding to Calendar…" : "Event copied – now run " + info.scName);
+        });
+      });
+  }
+
+  function localStamp(ts) {
+    // ISO 8601 with the phone's UTC offset, e.g. 2026-11-24T13:03:00+01:00 (Shortcuts parses this unambiguously)
+    const d = new Date(ts), p = (n) => String(n).padStart(2, "0");
+    const off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", a = Math.abs(off);
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()) + ":00" +
+      sign + p(Math.floor(a / 60)) + ":" + p(a % 60);
+  }
+
+  // ---------- Welcome / setup guide ----------
+  const WELCOME_KEY = "profcds-beta-welcomed";
+  function isInstalled() {
+    try { return !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)); } catch (e) { return false; }
+  }
+  function hasGameData() {
+    return Object.values(state.timers || {}).some((per) => Object.values(per || {}).some((t) => t && t.source));
+  }
+  function welcomeSheet() {
+    try { localStorage.setItem(WELCOME_KEY, "1"); } catch (e) {}
+    const base = location.origin + location.pathname.replace(/[^/]*$/, "");
+    const pcUrl = base + "ProfCDs-PC.zip", addonUrl = base + "ProfCDs-addon.zip";
+    const step = (n, done, title, body, btn) =>
+      '<div class="step' + (done ? " done" : "") + '"><div class="n">' + (done ? "✓" : n) + '</div><div><h3>' + title + '</h3><p>' + body + '</p>' + (btn || "") + '</div></div>';
+    openSheet('<h2>Welcome to Professions CDs</h2>' +
+      '<p class="hint">Track the long profession cooldowns in WoW Forever – transmutes, Salt Shaker, Mooncloth and Dedicated Study – for all your characters, and get a notification on your phone when one is ready.</p>' +
+      '<div class="steps2">' +
+      step(1, isInstalled(), "Add the app to your home screen",
+        "In Safari: tap Share → <strong>Add to Home Screen</strong>, then open the app from its icon. (Android: Chrome menu → Install app.)") +
+      step(2, !!pushId(), "Turn on notifications",
+        "So your phone tells you when a cooldown is ready – even with the app closed.",
+        pushId() ? "" : '<button class="btn primary" type="button" id="wPush">Turn on notifications</button>') +
+      step(3, !!syncCode(), "Create your sync code",
+        syncCode() ? 'Your code is <strong class="num">' + esc(syncCode()) + '</strong>. You’ll enter it on your PC.' : "It links this app with the game on your PC.",
+        syncCode() ? "" : '<button class="btn primary" type="button" id="wCode">Create sync code</button>') +
+      step(4, hasGameData(), "Install the WoW addon",
+        'On your PC, download <span class="url">' + esc(addonUrl) + '</span> and unzip it. Copy the <strong>ProfCDs</strong> folder into <strong>World of Warcraft\\_forever_\\Interface\\AddOns</strong>, so it ends up as <strong>AddOns\\ProfCDs</strong>.') +
+      step(5, hasGameData(), "Install the PC helper",
+        'Download <span class="url">' + esc(pcUrl) + '</span>, unzip it and double-click <strong>install.cmd</strong>. Enter your sync code. The helper runs in the background and starts by itself with Windows – it sends your cooldowns from the game to this app.') +
+      step(6, hasGameData(), "Play WoW as usual",
+        "Log in – a welcome window in game explains the rest, and a small tracker window shows all your characters’ cooldowns (toggle it with the minimap button or <strong>/cds</strong>). Open your profession window once on each crafter. Your cooldowns then show up here by themselves, marked “from the game”.") +
+      '</div>' +
+      '<p class="hint">No PC? You can also use the app on its own: add a character and tap <strong>Used now</strong> when you use a cooldown, or <strong>Set time left</strong> if you forgot.</p>' +
+      '<button class="btn primary wide" type="button" id="wDone">Got it</button>',
+      (el) => {
+        el.querySelector("#wDone").onclick = closeSheet;
+        const wp = el.querySelector("#wPush");
+        if (wp) wp.onclick = async () => { wp.disabled = true; wp.textContent = "Turning on…"; try { await enablePush(); toast("Notifications on"); } catch (e) { toast(e.message || "Couldn’t turn on notifications"); } welcomeSheet(); };
+        const wc = el.querySelector("#wCode");
+        if (wc) wc.onclick = async () => { setSyncCode(newCode()); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } welcomeSheet(); };
+      });
+  }
+
+  // ---------- Settings ----------
+  function settingsSheet() {
+    const durRows = [];
+    ORDER.forEach((k) => {
+      if (CDS[k].variants) Object.keys(CDS[k].variants).forEach((v) => durRows.push({ k, v, name: "Transmute: " + CDS[k].variants[v].name.replace(/ \(.*\)$/, "") }));
+      else durRows.push({ k, v: null, name: CDS[k].name });
+    });
+    openSheet('<h2>Settings</h2>' +
+      '<p class="hint">' + (syncMode === "account" ? "Your timers are saved to your Claude account, so they survive cleared browser data." : "Your timers are saved on this device.") + '</p>' +
+      (STANDALONE && pushConfigured()
+        ? '<div class="lbl">Sync with WoW</div>' +
+          (syncCode()
+            ? '<p class="hint">Your sync code. Enter it when you install the PC helper, and on any other phone that should share these timers.</p>' +
+              '<div class="code num" id="codeTxt">' + esc(syncCode()) + '</div>' +
+              '<p class="hint">' + (lastSyncOk ? "Last synced " + fmtAt(lastSyncOk) + "." : lastSyncErr ? "Not synced: " + esc(lastSyncErr) : "Syncing…") + '</p>' +
+              '<div class="row-btns"><button class="btn" type="button" id="copyCode">Copy code</button><button class="btn ghost" type="button" id="showCode">Use another code…</button></div>'
+            : '<p class="hint">Create a sync code to connect this app to the PC helper and the addon.</p>' +
+              '<div class="row-btns"><button class="btn primary" type="button" id="makeCode">Create sync code</button><button class="btn ghost" type="button" id="showCode">I have a code…</button></div>') +
+          '<div id="codeWrap" style="display:none" class="field"><label for="codeIn">Sync code</label><input type="text" id="codeIn" maxlength="16" autocapitalize="characters" autocomplete="off"><button class="btn primary" type="button" id="useCode">Use this code</button></div>'
+        : "") +
+      (STANDALONE && pushConfigured()
+        ? '<div class="lbl">Notifications</div>' +
+          '<p class="hint" id="pushStatus">' + (pushId()
+            ? "On. You get a notification on this phone when a cooldown is ready."
+            : "Off. Turn on to get a notification when a cooldown is ready, even with the app closed.") + '</p>' +
+          '<div class="row-btns"><button class="btn primary" type="button" id="pushOn">' + (pushId() ? "Reconnect" : "Turn on notifications") + '</button>' +
+          (pushId() ? '<button class="btn" type="button" id="pushTest">Send test</button>' : "") + '</div>'
+        : "") +
+      '<div class="lbl">Cooldown lengths</div><p class="hint">WoW Forever values as of November 2026. Change them if Blizzard does.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px"><div class="dur hint"><span></span><span style="text-align:center">Hours</span><span style="text-align:center">Minutes</span></div>' +
+      durRows.map((r, i) => { const m = getMin(r.k, r.v);
+        return '<div class="dur"><span>' + esc(r.name) + '</span><input type="number" inputmode="numeric" min="0" id="dh' + i + '" aria-label="' + esc(r.name) + ' hours" value="' + Math.floor(m / 60) + '"><input type="number" inputmode="numeric" min="0" max="59" id="dm' + i + '" aria-label="' + esc(r.name) + ' minutes" value="' + (m % 60) + '"></div>'; }).join("") +
+      '</div><div class="row-btns"><button class="btn ghost" type="button" id="resetDur">Reset lengths</button><button class="btn primary" type="button" id="saveDur">Save lengths</button></div>' +
+      '<div class="lbl">Backup</div><p class="hint">Copy your data somewhere safe, or paste a backup to restore it.</p>' +
+      '<div class="row-btns"><button class="btn" type="button" id="copyBk">Copy backup</button><button class="btn" type="button" id="showImp">Restore…</button></div>' +
+      '<div id="impWrap" style="display:none" class="field"><label for="impTxt">Paste backup</label><textarea id="impTxt"></textarea><button class="btn primary" type="button" id="doImp">Restore this backup</button></div>' +
+      '<div class="hint" id="setMsg"></div><button class="btn ghost" type="button" id="done">Close</button>',
+      (el) => {
+        el.querySelector("#done").onclick = closeSheet;
+        el.querySelector("#saveDur").onclick = () => {
+          durRows.forEach((r, i) => {
+            const min = Math.max(0, Math.floor(Number(el.querySelector("#dh" + i).value) || 0)) * 60 + Math.max(0, Math.floor(Number(el.querySelector("#dm" + i).value) || 0));
+            const key = durKey(r.k, r.v);
+            if (min > 0 && min !== defMin(r.k, r.v)) state.durations[key] = min; else delete state.durations[key];
+          });
+          state.settingsSetAt = Date.now();
+          save(); el.querySelector("#setMsg").textContent = "Lengths saved. They apply the next time you tap Used now.";
+        };
+        const pOn = el.querySelector("#pushOn");
+        if (pOn) pOn.onclick = async () => {
+          pOn.disabled = true; pOn.textContent = "Turning on…";
+          try { await enablePush(); toast("Notifications on"); settingsSheet(); }
+          catch (e) { el.querySelector("#pushStatus").textContent = e.message || "Couldn’t turn on notifications."; pOn.disabled = false; pOn.textContent = "Try again"; }
+        };
+        const mk = el.querySelector("#makeCode");
+        if (mk) mk.onclick = async () => { setSyncCode(newCode()); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } settingsSheet(); };
+        const cc = el.querySelector("#copyCode");
+        if (cc) cc.onclick = async () => { try { await navigator.clipboard.writeText(syncCode()); toast("Code copied"); } catch (e) { toast(syncCode()); } };
+        const sc = el.querySelector("#showCode");
+        if (sc) sc.onclick = () => { el.querySelector("#codeWrap").style.display = "flex"; el.querySelector("#codeIn").focus(); };
+        const uc = el.querySelector("#useCode");
+        if (uc) uc.onclick = async () => {
+          const v = el.querySelector("#codeIn").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+          if (!/^[A-Z0-9]{6,16}$/.test(v)) { el.querySelector("#setMsg").textContent = "A sync code is 6–16 letters and digits."; return; }
+          setSyncCode(v); await serverSync();
+          if (pushId()) { try { await enablePush(); } catch (e) {} }
+          toast("Sync code saved"); settingsSheet();
+        };
+        const pTest = el.querySelector("#pushTest");
+        if (pTest) pTest.onclick = async () => {
+          pTest.disabled = true;
+          try { await testPush(); toast("Test sent – lock the phone or wait a few seconds"); }
+          catch (e) { el.querySelector("#pushStatus").textContent = e.message; }
+          pTest.disabled = false;
+        };
+        el.querySelector("#resetDur").onclick = () => { state.durations = {}; state.settingsSetAt = Date.now(); save(); settingsSheet(); };
+        el.querySelector("#copyBk").onclick = async () => {
+          try { await navigator.clipboard.writeText(JSON.stringify(state)); toast("Backup copied"); }
+          catch (e) { el.querySelector("#impWrap").style.display = "flex"; el.querySelector("#impTxt").value = JSON.stringify(state); el.querySelector("#setMsg").textContent = "Copying was blocked. Select the text above and copy it."; }
+        };
+        el.querySelector("#showImp").onclick = () => { el.querySelector("#impWrap").style.display = "flex"; };
+        el.querySelector("#doImp").onclick = () => {
+          try {
+            const s = normalize(JSON.parse(el.querySelector("#impTxt").value));
+            if (!s.chars.length) throw new Error();
+            state = s; closeSheet(); save(); toast("Backup restored");
+          } catch (e) { el.querySelector("#setMsg").textContent = "That doesn’t look like a backup from this app."; }
+        };
+      });
+  }
+
+  // ---------- Events ----------
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const c = b.dataset.c, k = b.dataset.k;
+    switch (b.dataset.act) {
+      case "editChar": charSheet(state.chars.find((x) => x.id === c)); break;
+      case "use": if (k === "transmute") variantSheet(c); else startNow(c, k); break;
+      case "setLeft": setLeftSheet(c, k); break;
+      case "clear":
+        if (b.dataset.confirm) { state.timers[c] = state.timers[c] || {}; state.timers[c][k] = { cleared: true, setAt: Date.now() }; save(); }
+        else { b.dataset.confirm = "1"; b.textContent = "Tap to confirm"; setTimeout(() => { if (b.isConnected) { delete b.dataset.confirm; b.textContent = "Clear"; } }, 3000); }
+        break;
+    }
+  });
+  $("#addCharBtn").onclick = () => charSheet(null);
+  $("#settingsBtn").onclick = settingsSheet;
+  $("#helpBtn").onclick = welcomeSheet;
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("#scrim").classList.contains("open")) render(); });
+
+  window.addEventListener("error", (e) => { toast("Something went wrong: " + (e.message || "unknown error")); });
+
+  // ---------- Boot ----------
+  const local = lsGet();
+  if (local) state = normalize(local);
+  render();
+  setInterval(tick, 1000);
+  initRemote();
+  registerSW();
+  serverSync();
+  try { if (!localStorage.getItem(WELCOME_KEY)) setTimeout(welcomeSheet, 300); } catch (e) {}
+  setInterval(() => { if (!document.hidden) serverSync(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) serverSync(); });
+})();
+</script>
+</body>
+</html>
