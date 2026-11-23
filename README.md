@@ -11,7 +11,7 @@ Professions CDs Tracker keeps track of the long profession cooldowns for **all y
 | Transmute: Iron to Gold / Mithril to Truesilver | Alchemy | 1 h |
 | Salt Shaker (Refined Deeprock Salt) | Leatherworking | 71 h |
 | Mooncloth | Tailoring | 95 h |
-| Dedicated Study | Legacy talent | 23 h |
+| Dedicated Study | Legacy talent | 23 h | 
 
 **Open the app:** https://professionscdstracker-beta.pages.dev
 
