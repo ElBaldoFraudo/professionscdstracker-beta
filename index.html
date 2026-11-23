@@ -63,6 +63,9 @@ header.top { display: flex; align-items: flex-end; justify-content: space-betwee
 .cd-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .cd-name { font-weight: 600; }
 .cd-sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.cd-right { display: flex; align-items: center; gap: 6px; }
+.morebtn { background: transparent; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 10px 8px; }
+.next-row.more .who span { color: var(--muted); font-size: 14px; }
 .pill { font-size: 13px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
 .pill.ready { color: #0f2419; background: var(--ready); }
 .pill.soon { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
@@ -301,11 +304,18 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
       : rows.length === 0 ? "No cooldowns tracked yet"
       : ready + " ready" + (active.length ? " · next in " + fmtLeft(active[0].t.readyAt - now) : "");
 
-    // Next up
-    if (active.length) {
-      $("#nextWrap").innerHTML = '<div class="next">' + active.slice(0, 4).map((r) =>
-        '<div class="next-row"><div class="who">' + esc(label(r.k, r.t)) + ' <span>· ' + esc(r.c.name) + '</span></div>' +
-        '<div class="t num" data-left="' + r.t.readyAt + '">' + fmtLeft(r.t.readyAt - now) + '</div></div>').join("") + '</div>';
+    // Next up: cooldowns that are ready first (green), then the soonest ones. At most 5 rows, then "+ N more".
+    const readyNow = rows.filter((r) => r.t && r.t.readyAt <= now).sort((a, b) => b.t.readyAt - a.t.readyAt);
+    const nextList = readyNow.concat(active);
+    const MAX_NEXT = 5;
+    if (nextList.length) {
+      const shown = nextList.slice(0, MAX_NEXT), more = nextList.length - shown.length;
+      $("#nextWrap").innerHTML = '<div class="next">' + shown.map((r) => {
+        const isReady = r.t.readyAt <= now;
+        return '<div class="next-row"><div class="who">' + esc(label(r.k, r.t)) + ' <span>· ' + esc(r.c.name) + '</span></div>' +
+          (isReady ? '<div class="t"><span class="pill ready">Ready</span></div>'
+                   : '<div class="t num" data-left="' + r.t.readyAt + '">' + fmtLeft(r.t.readyAt - now) + '</div>') + '</div>';
+      }).join("") + (more > 0 ? '<div class="next-row more"><div class="who"><span>+ ' + more + ' more – see your characters below</span></div></div>' : "") + '</div>';
     } else { $("#nextWrap").innerHTML = ""; }
 
     // Characters
@@ -321,6 +331,7 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
     }).join("");
   }
 
+  const expandedRows = new Set();
   function cdRow(c, k, now) {
     const t = timer(c.id, k), st = statusOf(t, now), def = CDS[k];
     let pct = 0, when = "";
@@ -334,13 +345,16 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
     }
     const sub = def.prof + (def.note ? " · " + def.note : "");
     const cal = "";
+    const rowId = c.id + ":" + k;
+    const compact = !!syncCode() && !expandedRows.has(rowId); // synced with the game: tuck the manual buttons away
     const clear = t ? '<button class="btn ghost" type="button" data-act="clear" data-c="' + c.id + '" data-k="' + k + '">Clear</button>' : "";
     return '<div class="cd"><div class="cd-top"><div><div class="cd-name">' + esc(label(k, t)) + '</div><div class="cd-sub">' + esc(sub) + '</div></div>' +
-      '<span class="pill ' + st.cls + ' num" data-pill="' + (t ? t.readyAt : "") + '">' + st.text + '</span></div>' +
+      '<div class="cd-right"><span class="pill ' + st.cls + ' num" data-pill="' + (t ? t.readyAt : "") + '">' + st.text + '</span>' +
+      (syncCode() ? '<button class="morebtn" type="button" data-act="more" data-c="' + c.id + '" data-k="' + k + '" aria-label="Manual options" aria-expanded="' + (!compact) + '">⋯</button>' : '') + '</div></div>' +
       (t ? '<div class="bar' + (t.readyAt <= now ? " done" : "") + '" data-bar="' + t.startedAt + ':' + t.readyAt + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' : "") +
       '<div class="cd-when num">' + esc(when) + (t && t.source ? ' · from the game' : '') + '</div>' +
-      '<div class="actions"><button class="btn primary" type="button" data-act="use" data-c="' + c.id + '" data-k="' + k + '">Used now</button>' +
-      '<button class="btn" type="button" data-act="setLeft" data-c="' + c.id + '" data-k="' + k + '">Set time left</button>' + cal + clear + '</div></div>';
+      (compact ? '' : '<div class="actions"><button class="btn primary" type="button" data-act="use" data-c="' + c.id + '" data-k="' + k + '">Used now</button>' +
+      '<button class="btn" type="button" data-act="setLeft" data-c="' + c.id + '" data-k="' + k + '">Set time left</button>' + cal + clear + '</div>') + '</div>';
   }
 
   // Light per-second update without rebuilding buttons
@@ -475,6 +489,7 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
     /^https?:$/.test(location.protocol) && !/claude|anthropic/i.test(location.hostname);
 
   // ---------- Push notifications (only when hosted on its own website) ----------
+  const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const PUSH_SERVER = "https://profcds-sync.zrn2bfz8vj.workers.dev";
   const VAPID_PUBLIC = "BEfOo-Dn-_GRLUu2MVlNGtkcMYG5OqfiTKZEa9vSVpqzdcEFjYdZZRfOHfbtvZOp2Jr6SimjalhwzjpYN-EvpHI";
   const PUSH_ID_KEY = "profcds-beta-push-id";
@@ -497,10 +512,14 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
   }
 
   async function enablePush() {
-    if (!pushSupported()) throw new Error("This phone can’t receive web notifications. Open the app from its home-screen icon (iOS 16.4 or later).");
+    if (!pushSupported()) throw new Error(IS_IOS
+      ? "This iPhone can’t receive web notifications here. Open the app from its home-screen icon (iOS 16.4 or later)."
+      : "This browser can’t receive web notifications. Use Chrome and install the app (⋮ → Install app).");
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") throw new Error("Notifications are turned off. Allow them in Inställningar → Notiser → CDs Beta.");
-    if (!syncCode()) setSyncCode(newCode());
+    if (perm !== "granted") throw new Error(IS_IOS
+      ? "Notifications are turned off. Allow them in Settings → Notifications → CDs Beta."
+      : "Notifications are turned off. Allow them in Chrome: ⋮ → Settings → Site settings → Notifications.");
+    if (!syncCode()) await createCode();
     const reg = swReg || await registerSW() || await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(VAPID_PUBLIC) });
@@ -518,6 +537,14 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
   function newCode() {
     const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = crypto.getRandomValues(new Uint8Array(8));
     let out = ""; r.forEach((x) => { out += a[x % a.length]; }); return out;
+  }
+  // Ask the server for a code it guarantees is unused; fall back to a local random code if offline.
+  async function createCode() {
+    try {
+      const res = await fetch(PUSH_SERVER + "/newcode", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (res.ok) { const out = await res.json(); if (out.code) { setSyncCode(out.code); return out.code; } }
+    } catch (e) {}
+    const c = newCode(); setSyncCode(c); return c;
   }
   let syncTimer = null, syncing = false, syncAgain = false, lastSyncOk = 0, lastSyncErr = "";
   function scheduleServerSync() {
@@ -676,7 +703,7 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
         const wp = el.querySelector("#wPush");
         if (wp) wp.onclick = async () => { wp.disabled = true; wp.textContent = "Turning on…"; try { await enablePush(); toast("Notifications on"); } catch (e) { toast(e.message || "Couldn’t turn on notifications"); } welcomeSheet(); };
         const wc = el.querySelector("#wCode");
-        if (wc) wc.onclick = async () => { setSyncCode(newCode()); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } welcomeSheet(); };
+        if (wc) wc.onclick = async () => { await createCode(); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } welcomeSheet(); };
       });
   }
 
@@ -735,7 +762,7 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
           catch (e) { el.querySelector("#pushStatus").textContent = e.message || "Couldn’t turn on notifications."; pOn.disabled = false; pOn.textContent = "Try again"; }
         };
         const mk = el.querySelector("#makeCode");
-        if (mk) mk.onclick = async () => { setSyncCode(newCode()); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } settingsSheet(); };
+        if (mk) mk.onclick = async () => { await createCode(); await serverSync(); if (pushId()) { try { await enablePush(); } catch (e) {} } settingsSheet(); };
         const cc = el.querySelector("#copyCode");
         if (cc) cc.onclick = async () => { try { await navigator.clipboard.writeText(syncCode()); toast("Code copied"); } catch (e) { toast(syncCode()); } };
         const sc = el.querySelector("#showCode");
@@ -777,6 +804,7 @@ textarea { min-height: 120px; font-size: 13px; font-family: ui-monospace, Menlo,
     const c = b.dataset.c, k = b.dataset.k;
     switch (b.dataset.act) {
       case "editChar": charSheet(state.chars.find((x) => x.id === c)); break;
+      case "more": { const id = c + ":" + k; if (expandedRows.has(id)) expandedRows.delete(id); else expandedRows.add(id); render(); break; }
       case "use": if (k === "transmute") variantSheet(c); else startNow(c, k); break;
       case "setLeft": setLeftSheet(c, k); break;
       case "clear":
